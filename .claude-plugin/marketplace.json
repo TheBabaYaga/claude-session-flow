@@ -1,0 +1,14 @@
+{
+  "name": "claude-session-flow",
+  "description": "A Claude Code mod that shows the current session as a flow of prompts, phases and subagents",
+  "owner": {
+    "name": "TheBabaYaga",
+    "url": "https://github.com/TheBabaYaga"
+  },
+  "plugins": [
+    {
+      "name": "session-flow",
+      "source": "./"
+    }
+  ]
+}
