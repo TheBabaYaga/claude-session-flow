@@ -3,7 +3,7 @@ import type { Register, TurnUsage } from 'claude-code'
 
 import type { FlowNode, FlowStatus } from '../types'
 
-import { childrenOf, phasesOf } from './phases'
+import { childrenOf, phasesOf, secondsBetween } from './phases'
 
 const PANE = 'session-flow'
 const nodes = atom({ plugin: 'session-flow', key: 'nodes' } as const, [])
@@ -16,6 +16,10 @@ const promptRow = atom({ plugin: 'session-flow', key: 'promptRow' } as const, ''
 // The first of these arguments that holds a string is the detail of a tool call.
 const DETAIL_KEYS = ['command', 'description', 'file_path', 'path', 'pattern', 'url', 'query', 'skill', 'prompt']
 const COLOR: Record<FlowStatus, string> = { running: 'warning', done: 'success', error: 'error' }
+// Columns of a phase row: '├─ ' + mark + label + time + gap, so details line up.
+const LABEL_W = 11
+const TIME_W = 7
+const DETAIL_COL = 3 + 2 + LABEL_W + TIME_W + 2
 
 const oneLine = (text: string, max = 60) => {
   const flat = text.replace(/\s+/g, ' ').trim()
@@ -26,13 +30,47 @@ const oneLine = (text: string, max = 60) => {
 export const firstLine = (text: string) =>
   oneLine(text.split('\n').map(line => line.replace(/[*_`#>|]/g, '').trim()).find(Boolean) ?? '', 100)
 
+// Kept whole up to 300 characters; the pane cuts it to its width, so a file name survives a long path.
 export const detailOf = (input: object) => {
   const args = Object.fromEntries(Object.entries(input))
+  const questions = args.questions
+  if (Array.isArray(questions) && questions.length > 0) {
+    const first = Object.fromEntries(Object.entries(Object(questions[0])))
+    if (typeof first.question === 'string') return oneLine(first.question, 300)
+  }
   const key = DETAIL_KEYS.find(k => typeof args[k] === 'string' && args[k] !== '')
-  return key === undefined ? '' : oneLine(String(args[key]))
+  return key === undefined ? '' : oneLine(String(args[key]), 300)
 }
 
-type Row = {
+// A prompt as the person typed it: a slash command as `/name args`, a background task's notice as its summary.
+export const cleanPrompt = (text: string): { label: string; text: string } => {
+  const tag = (name: string) => new RegExp(`<${name}>([\\s\\S]*?)</${name}>`).exec(text)?.[1]?.trim()
+  if (text.includes('<task-notification>')) {
+    return { label: 'Task', text: tag('summary') ?? tag('status') ?? 'background task update' }
+  }
+  const command = tag('command-name') ?? tag('command-message')
+  if (command !== undefined) {
+    return { label: 'You', text: [`/${command.replace(/^\//, '')}`, tag('command-args')].filter(Boolean).join(' ') }
+  }
+  return { label: 'You', text: text.replace(/<[^>]+>/g, ' ') }
+}
+
+const cut = (text: string, max: number) =>
+  text.length <= max ? text : max <= 1 ? '' : `${text.slice(0, max - 1)}…`
+
+// The label and time columns a row takes before its detail.
+const labelText = (row: Row) =>
+  row.label === '' ? '' : row.mark === undefined ? `${row.label}  ` : row.label.slice(0, LABEL_W - 1).padEnd(LABEL_W)
+
+// Cuts a row's detail, and drops its cost, so the whole row fits in `width` cells and never wraps.
+export const fitRow = (row: Row, width: number): Row => {
+  const used = row.prefix.length + (row.mark === undefined ? 0 : row.mark.length + 1 + TIME_W + 2) + labelText(row).length
+  const room = Math.max(0, width - used)
+  const cost = row.cost !== undefined && row.detail.length + row.cost.length + 2 <= room ? row.cost : undefined
+  return { ...row, detail: cut(row.detail, room - (cost === undefined ? 0 : cost.length + 2)), cost }
+}
+
+export type Row = {
   prefix: string
   label: string
   detail: string
@@ -42,20 +80,36 @@ type Row = {
   color?: string
   target?: string
   cost?: string
+  // A dim line above each prompt: its number, cost and time.
+  isHeader?: boolean
+  isDim?: boolean
 }
 
 // One row per line: each prompt, its phases, a subagent's answer under its row, and Claude's answer last.
 export const rowsOf = (list: readonly FlowNode[], aliases: Record<string, string>): Row[] => {
   const children = childrenOf(list, aliases)
   const rows: Row[] = []
+  let count = 0
   for (const prompt of children.get('') ?? []) {
     if (rows.length > 0) rows.push({ prefix: '', label: '', detail: '' })
     const steps = children.get(prompt.id) ?? []
-    rows.push({ prefix: '', label: 'You', detail: prompt.detail, color: 'suggestion', target: prompt.row ?? steps[0]?.id,
-      cost: prompt.usd === undefined ? undefined : `$${prompt.usd.toFixed(2)}` })
+    const isTask = prompt.label === 'Task'
+    if (!isTask) count += 1
+    const header = [
+      isTask ? 'Background task' : `Prompt ${count}`,
+      prompt.usd === undefined ? '' : `$${prompt.usd.toFixed(2)}`,
+      secondsBetween(prompt.startedAt, prompt.endedAt),
+    ]
+    rows.push({ prefix: '', label: '', detail: header.filter(Boolean).join(' · '), isHeader: true })
+    rows.push({
+      prefix: '', label: isTask ? 'Task' : 'You', detail: prompt.detail,
+      color: isTask ? 'subtle' : 'suggestion', target: prompt.row ?? steps[0]?.id,
+    })
     for (const phase of phasesOf(steps, children)) {
       rows.push({ prefix: '├─ ', ...phase })
-      if (phase.note) rows.push({ prefix: `│${' '.repeat(15)}`, label: '', detail: `“${phase.note}”`, target: phase.target })
+      if (phase.note) {
+        rows.push({ prefix: `│${' '.repeat(DETAIL_COL - 1)}`, label: '', detail: `“${phase.note}”`, target: phase.target, isDim: true })
+      }
     }
     const answer =
       prompt.status === 'running' ? 'working…' : prompt.result ?? (prompt.status === 'error' ? 'stopped' : '')
@@ -98,9 +152,10 @@ export const register: Register = on => {
       await update($, turn, () => e.turnId)
       const row = (await read($, promptRow)) || undefined
       await update($, promptRow, () => '')
+      const prompt = cleanPrompt(e.text)
       const node: FlowNode = {
-        id: e.turnId, parent: '', kind: 'turn', label: 'Prompt',
-        detail: oneLine(e.text) || '(no text)', status: 'running', startedAt: Date.now(), row,
+        id: e.turnId, parent: '', kind: 'turn', label: prompt.label,
+        detail: oneLine(prompt.text, 300) || '(no text)', status: 'running', startedAt: Date.now(), row,
         usdAtStart: (await $.session.usage()).cost?.usd,
       }
       await update($, nodes, list => [...list, node].slice(-MAX_NODES))
@@ -185,35 +240,32 @@ export const register: Register = on => {
       const moved = await $.ui.scroll({ to: { requestId: target }, block: 'start' })
       if (moved.deny !== undefined) $.ui.toast(`Cannot jump there: ${moved.deny}`)
     }
-    const rows = rowsOf(await read($, nodes), await read($, alias))
+    // ponytail: the desktop wraps a long Text inside a one-line Box, so rows are cut here to the pane's width in cells; the terminal reports the conversation's width, not the pane's, and cuts by itself.
+    const width = e.surface === 'terminal' ? Infinity : (e.viewport?.columns ?? 80) - 4 - (canJump ? 2 : 0)
+    const rows = rowsOf(await read($, nodes), await read($, alias)).map(row => fitRow(row, width))
 
     return (
       <Box flexDirection="column">
         {rows.length === 0 && <Text dimColor>Nothing yet. Send a prompt.</Text>}
         {rows.map(row => (
+          // fitRow cuts each row to the pane's width; a row that still overflows wraps to a second line and never covers the next.
           <Box>
-            <Text dimColor>{row.prefix}</Text>
-            {row.mark !== undefined && row.status !== undefined && (
-              <Text color={COLOR[row.status]}>{row.mark} </Text>
-            )}
-            {canJump && row.target !== undefined ? (
-              <Box flexGrow={1} flexShrink={1}>
-                <Button plain key={`${row.target}:${row.label}`} onPress={() => jump(row.target ?? '')}>
-                  {`${row.label.padEnd(row.label === '' ? 0 : row.mark === undefined ? 7 : 11)}${row.detail}`}
-                </Button>
-              </Box>
-            ) : (
-              <>
-                {row.label !== '' && (
-                  <Text bold color={row.color}>{row.label.padEnd(row.mark === undefined ? 7 : 11)}</Text>
-                )}
-                <Box flexGrow={1} flexShrink={1}>
-                  <Text dimColor={row.color === undefined} wrap="truncate">{row.detail}</Text>
-                </Box>
-              </>
-            )}
-            {row.cost ? <Text dimColor> {row.cost}</Text> : null}
-            {row.seconds ? <Text dimColor> {row.seconds}</Text> : null}
+            {canJump && (row.target !== undefined
+              ? <Button plain dimColor key={`${row.target}:${row.label}`} onPress={() => jump(row.target ?? '')}>↗</Button>
+              : <Text>{' '}</Text>)}
+            {canJump && <Text>{' '}</Text>}
+            <Text wrap="truncate-end">
+              <Text dimColor>{row.prefix}</Text>
+              {row.mark !== undefined && row.status !== undefined && (
+                <Text color={COLOR[row.status]}>{`${row.mark} `}</Text>
+              )}
+              {row.label !== '' && (
+                <Text bold color={row.color}>{labelText(row)}</Text>
+              )}
+              {row.mark !== undefined && <Text dimColor>{`${(row.seconds ?? '').padStart(TIME_W)}  `}</Text>}
+              <Text dimColor={row.isHeader === true || row.isDim === true} italic={row.isDim}>{row.detail}</Text>
+              {row.cost ? <Text dimColor>{`  ${row.cost}`}</Text> : null}
+            </Text>
           </Box>
         ))}
       </Box>
