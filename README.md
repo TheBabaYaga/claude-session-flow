@@ -14,6 +14,16 @@ You  make it a real SVG flow chart
 └─ Claude  I rebuilt the pane as a real flow chart.
 ```
 
+## Screenshots
+
+In the terminal, the label and time columns line up, and the colors come from your Claude Code theme.
+
+![The session-flow pane in the terminal](screenshots/terminal.png)
+
+The desktop app draws a proportional font, so the pane keeps one space after each label. Each prompt header has a gray tint.
+
+![The session-flow pane in the desktop app](screenshots/desktop.png)
+
 ## Install
 
 Type this at the Claude Code prompt in a terminal session:
