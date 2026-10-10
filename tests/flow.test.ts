@@ -126,3 +126,18 @@ test('keeps one cell clear at the left and two at the right edge of the terminal
   // With no prompt yet, the empty text starts two cells in, where the rows put their ↗ column.
   expect(await terminal.drawn()).toMatchObject({ children: [{ type: 'Box', props: { paddingLeft: 2 } }] })
 })
+
+test('puts one blank line between prompts in the terminal, where the empty row already draws one', async ($, on) => {
+  on('turn.start', async (_$, e) => ({ turnId: e.turnId }))
+  on('turn.complete', async (_$, e) => ({ text: e.answer }))
+  on('session.usage', async () => ({ value: { startedAt: 0, context: { window: 200_000 }, rateLimits: [] } }))
+  for (const turnId of ['t1', 't2']) {
+    await $.turn.start({ turnId, text: 'hi' })
+    await $.turn.complete({ turnId, answer: 'ok', durationMs: 1, isAborted: false, reason: 'answer' })
+  }
+  const props = { title: 'Session flow', isFocused: false, bodyColumns: 60, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 20 }, view: {} }
+  const terminal = await $.ui.mount({ plugin: 'session-flow', surface: 'terminal', component: 'Pane', props, requestId: 'session-flow' })
+  const tree = await terminal.drawn()
+  const header = ('children' in tree ? tree.children ?? [] : []).find(c => JSON.stringify(c).includes('Prompt 2'))
+  expect(header).toMatchObject({ type: 'Box', props: { marginTop: 0 } })
+})

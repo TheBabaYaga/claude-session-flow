@@ -277,7 +277,8 @@ export const register: Register = on => {
           // fitRow cuts each row to the pane's width; a row that still overflows wraps to a second line and never covers the next.
           <Box
             backgroundColor={row.isHeader === true && e.surface !== 'terminal' ? HEADER_TINT : undefined}
-            marginTop={row.isHeader === true && i > 0 ? 1 : 0}
+            // The terminal already draws the empty row above a header as a blank line, so only the desktop gets this margin.
+            marginTop={row.isHeader === true && i > 0 && cols === undefined ? 1 : 0}
           >
             {canJump && (row.target !== undefined
               ? <Button plain dimColor key={`${row.target}:${row.label}`} onPress={() => jump(row.target ?? '')}>↗</Button>
