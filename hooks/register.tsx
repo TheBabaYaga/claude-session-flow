@@ -20,6 +20,8 @@ const COLOR: Record<FlowStatus, string> = { running: 'warning', done: 'success',
 const LABEL_W = 11
 const TIME_W = 7
 const DETAIL_COL = 3 + 2 + LABEL_W + TIME_W + 2
+// A gray at 12% opacity: subtle on a light and on a dark theme. The theme has no neutral background key.
+const HEADER_TINT = '#8080801f'
 
 const oneLine = (text: string, max = 60) => {
   const flat = text.replace(/\s+/g, ' ').trim()
@@ -247,9 +249,12 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column">
         {rows.length === 0 && <Text dimColor>Nothing yet. Send a prompt.</Text>}
-        {rows.map(row => (
+        {rows.map((row, i) => (
           // fitRow cuts each row to the pane's width; a row that still overflows wraps to a second line and never covers the next.
-          <Box>
+          <Box
+            backgroundColor={row.isHeader === true && e.surface !== 'terminal' ? HEADER_TINT : undefined}
+            marginTop={row.isHeader === true && i > 0 ? 1 : 0}
+          >
             {canJump && (row.target !== undefined
               ? <Button plain dimColor key={`${row.target}:${row.label}`} onPress={() => jump(row.target ?? '')}>↗</Button>
               : <Text>{' '}</Text>)}
