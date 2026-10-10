@@ -106,6 +106,12 @@ const describe = (label: string, steps: readonly FlowNode[]) => {
   return `${times}${last === undefined ? '' : stepText(last)}`
 }
 
+// The built-in tools a phase used, as `Read, Grep`. Empty for an MCP phase, whose detail already leads with its tool, and where the label is the tool.
+const toolsOf = (label: string, steps: readonly FlowNode[]) => {
+  const tools = [...new Set(steps.map(toolOf))].join(', ')
+  return tools === label || steps.some(s => MCP.test(toolOf(s))) ? '' : tools
+}
+
 const markOf = (steps: readonly FlowNode[]): [string, FlowStatus] => {
   if (steps.some(s => s.status === 'running')) return ['◐', 'running']
   if (steps[steps.length - 1]?.status === 'error') return ['✗', 'error']
@@ -139,6 +145,6 @@ export const phasesOf = (steps: readonly FlowNode[], children: Map<string, FlowN
         cost: first.tokensIn === undefined ? undefined : `${tokens(first.tokensIn)} in · ${tokens(first.tokensOut ?? 0)} out`,
       }
     }
-    return { ...base, detail: describe(label, run) }
+    return { ...base, detail: [toolsOf(label, run), describe(label, run)].filter(Boolean).join(' · ') }
   })
 }

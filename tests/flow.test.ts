@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { childrenOf, phasesOf } from '../hooks/phases'
-import { cleanPrompt, detailOf, firstLine, fitRow, rowsOf } from '../hooks/register'
+import { cleanPrompt, columnsOf, detailOf, firstLine, fitRow, labelText, rowsOf, timeText } from '../hooks/register'
 import type { FlowNode } from '../types'
 
 let clock = 0
@@ -31,9 +31,9 @@ test('groups the steps of a prompt into phases and nests a subagent answer under
   expect(text(rows)).toEqual([
     'Prompt 1 · $0.84 · 0.5s',
     'You make it clear',
-    '├─ ✓ Explored a.ts, b.ts, 1 search',
-    '├─ ✓ Edited 2× a.ts',
-    '├─ ↻ Tested 2× npm test',
+    '├─ ✓ Explored Read, Grep · a.ts, b.ts, 1 search',
+    '├─ ✓ Edited Edit · 2× a.ts',
+    '├─ ↻ Tested Bash · 2× npm test',
     '├─ ✓ Subagent Review the tests · 1 step',
     '│ “3/3 pass”',
     '└─ Claude Done, see the pane.',
@@ -56,11 +56,11 @@ test('shows a running prompt as working and a background task apart from prompts
   expect(text(rows)).toEqual([
     'Prompt 1 · 0.5s', 'You first', '└─ Claude ok', '',
     'Background task · 0.5s', 'Task Background command "npm test" completed', '└─ Claude noted', '',
-    'Prompt 2', 'You second', '├─ ◐ Ran ls', '└─ Claude working…',
+    'Prompt 2', 'You second', '├─ ◐ Ran Bash · ls', '└─ Claude working…',
   ])
 })
 
-test('names an MCP step by its server, hides ToolSearch, and keeps a file name from a long path', async () => {
+test('names an MCP step by its server and a built-in step by its tool, hides ToolSearch, and keeps a file name from a long path', async () => {
   const steps = [
     node('s1', 't', 'ToolSearch', 'select:mcp__claude_ai_Atlassian__editJiraIssue'),
     node('m1', 't', 'mcp__claude_ai_Atlassian__editJiraIssue', 'VBRB-10'),
@@ -69,7 +69,7 @@ test('names an MCP step by its server, hides ToolSearch, and keeps a file name f
   ]
   const phases = phasesOf(steps, childrenOf(steps, {}))
 
-  expect(phases.map(p => `${p.label} ${p.detail}`)).toEqual(['Atlassian 2× createJiraIssue', 'Explored notes.md'])
+  expect(phases.map(p => `${p.label} ${p.detail}`)).toEqual(['Atlassian 2× createJiraIssue', 'Explored Read · notes.md'])
 })
 
 test('shows a slash command and a task notification as plain text', async () => {
@@ -103,4 +103,26 @@ test('cuts a row to the pane width, and drops the cost before the detail', async
   const phase = fitRow({ prefix: '├─ ', mark: '✓', status: 'done', seconds: '41.0s', label: 'Subagent', detail: 'Review the tests', cost: '212k in · 4k out' }, 50)
   expect(phase.cost).toBeUndefined()
   expect(3 + 2 + 11 + 7 + 2 + phase.detail.length).toBeLessThanOrEqual(50)
+})
+
+test('sizes the label and time columns to the widest row in the terminal, and keeps one space on the desktop', async () => {
+  const row = { prefix: '├─ ', mark: '✓', status: 'done' as const, seconds: '1.5s', label: 'Ran', detail: 'Bash · ls' }
+  const rows = [row, { ...row, label: 'Tested', seconds: '1m 13s' }, { prefix: '', label: 'You', detail: 'hi' }]
+  const cols = columnsOf(rows)
+  expect(cols).toEqual({ label: 7, time: 6 })
+  expect(labelText(row, cols) + timeText(row, cols)).toBe('Ran      1.5s  ')
+  expect(labelText(row) + timeText(row)).toBe('Ran 1.5s  ')
+  // A row without a mark has no time, and keeps two spaces after its label.
+  expect(labelText({ prefix: '', label: 'You', detail: 'hi' }, cols)).toBe('You  ')
+  // A subagent's note starts under the detail of the phase rows.
+  const note = fitRow({ prefix: '│', label: '', detail: '“ok”', isDim: true }, Infinity, cols)
+  expect(note.prefix.length).toBe('├─ ✓ '.length + 7 + 6 + 2)
+})
+
+test('keeps one cell clear at the left and two at the right edge of the terminal pane, and indents the empty text like a row', async $ => {
+  const props = { title: 'Session flow', isFocused: false, bodyColumns: 60, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 20 }, view: {} }
+  const terminal = await $.ui.mount({ plugin: 'session-flow', surface: 'terminal', component: 'Pane', props, requestId: 'session-flow' })
+  expect(await terminal.drawn()).toMatchObject({ type: 'Box', props: { paddingLeft: 1, paddingRight: 2 } })
+  // With no prompt yet, the empty text starts two cells in, where the rows put their ↗ column.
+  expect(await terminal.drawn()).toMatchObject({ children: [{ type: 'Box', props: { paddingLeft: 2 } }] })
 })

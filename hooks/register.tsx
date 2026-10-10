@@ -60,13 +60,31 @@ export const cleanPrompt = (text: string): { label: string; text: string } => {
 const cut = (text: string, max: number) =>
   text.length <= max ? text : max <= 1 ? '' : `${text.slice(0, max - 1)}…`
 
-// The label and time columns a row takes before its detail.
-const labelText = (row: Row) =>
-  row.label === '' ? '' : row.mark === undefined ? `${row.label}  ` : row.label.slice(0, LABEL_W - 1).padEnd(LABEL_W)
+// The widths of the label and time columns. The terminal's fixed-width font lines them up; the desktop
+// draws a proportional font, where padding cannot line up, so it passes none and keeps one space.
+export type Cols = { label: number; time: number }
+
+// Each column as wide as its widest phase row, so the gap after the label is one space.
+export const columnsOf = (rows: readonly Row[]): Cols => {
+  const phases = rows.filter(r => r.mark !== undefined)
+  return {
+    label: Math.max(0, ...phases.map(r => r.label.slice(0, LABEL_W - 1).length)) + 1,
+    time: Math.max(0, ...phases.map(r => (r.seconds ?? '').length)),
+  }
+}
+
+// The label and time a row takes before its detail.
+export const labelText = (row: Row, cols?: Cols) =>
+  row.label === '' ? '' : row.mark === undefined ? `${row.label}  ` : cols ? row.label.slice(0, LABEL_W - 1).padEnd(cols.label) : `${row.label} `
+
+export const timeText = (row: Row, cols?: Cols) =>
+  row.mark === undefined ? '' : `${cols ? (row.seconds ?? '').padStart(cols.time) : row.seconds ?? ''}  `
 
 // Cuts a row's detail, and drops its cost, so the whole row fits in `width` cells and never wraps.
-export const fitRow = (row: Row, width: number): Row => {
-  const used = row.prefix.length + (row.mark === undefined ? 0 : row.mark.length + 1 + TIME_W + 2) + labelText(row).length
+// With columns, a subagent's note starts under the detail of the phase rows.
+export const fitRow = (input: Row, width: number, cols?: Cols): Row => {
+  const row = cols && input.isDim === true ? { ...input, prefix: `│${' '.repeat(3 + 2 + cols.label + cols.time + 2 - 1)}` } : input
+  const used = row.prefix.length + (row.mark === undefined ? 0 : row.mark.length + 1) + labelText(row, cols).length + timeText(row, cols).length
   const room = Math.max(0, width - used)
   const cost = row.cost !== undefined && row.detail.length + row.cost.length + 2 <= room ? row.cost : undefined
   return { ...row, detail: cut(row.detail, room - (cost === undefined ? 0 : cost.length + 2)), cost }
@@ -244,11 +262,17 @@ export const register: Register = on => {
     }
     // ponytail: the desktop wraps a long Text inside a one-line Box, so rows are cut here to the pane's width in cells; the terminal reports the conversation's width, not the pane's, and cuts by itself.
     const width = e.surface === 'terminal' ? Infinity : (e.viewport?.columns ?? 80) - 4 - (canJump ? 2 : 0)
-    const rows = rowsOf(await read($, nodes), await read($, alias)).map(row => fitRow(row, width))
+    const all = rowsOf(await read($, nodes), await read($, alias))
+    const cols = e.surface === 'terminal' ? columnsOf(all) : undefined
+    const rows = all.map(row => fitRow(row, width, cols))
 
     return (
-      <Box flexDirection="column">
-        {rows.length === 0 && <Text dimColor>Nothing yet. Send a prompt.</Text>}
+      // In the terminal: one cell clear before the ↗ column, and two at the right edge, where a cut row would touch the pane border.
+      <Box flexDirection="column" paddingLeft={cols ? 1 : 0} paddingRight={cols ? 2 : 0}>
+        {rows.length === 0 && (
+          // Starts where the rows' text starts: after the ↗ column in the terminal.
+          <Box paddingLeft={canJump ? 2 : 0}><Text dimColor>Nothing yet. Send a prompt.</Text></Box>
+        )}
         {rows.map((row, i) => (
           // fitRow cuts each row to the pane's width; a row that still overflows wraps to a second line and never covers the next.
           <Box
@@ -265,9 +289,9 @@ export const register: Register = on => {
                 <Text color={COLOR[row.status]}>{`${row.mark} `}</Text>
               )}
               {row.label !== '' && (
-                <Text bold color={row.color}>{labelText(row)}</Text>
+                <Text bold color={row.color}>{labelText(row, cols)}</Text>
               )}
-              {row.mark !== undefined && <Text dimColor>{`${(row.seconds ?? '').padStart(TIME_W)}  `}</Text>}
+              {row.mark !== undefined && <Text dimColor>{timeText(row, cols)}</Text>}
               <Text dimColor={row.isHeader === true || row.isDim === true} italic={row.isDim}>{row.detail}</Text>
               {row.cost ? <Text dimColor>{`  ${row.cost}`}</Text> : null}
             </Text>
