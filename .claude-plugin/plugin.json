@@ -1,6 +1,6 @@
 {
   "name": "session-flow",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "A live pane that shows the session as a flow: each prompt, its phases, its subagents and its cost",
   "author": { "name": "TheBabaYaga", "url": "https://github.com/TheBabaYaga" },
   "repository": "https://github.com/TheBabaYaga/claude-session-flow",
