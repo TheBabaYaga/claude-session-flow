@@ -63,9 +63,9 @@ test('shows a running prompt as working and a background task apart from prompts
 test('names an MCP step by its server and a built-in step by its tool, hides ToolSearch, and keeps a file name from a long path', async () => {
   const steps = [
     node('s1', 't', 'ToolSearch', 'select:mcp__claude_ai_Atlassian__editJiraIssue'),
-    node('m1', 't', 'mcp__claude_ai_Atlassian__editJiraIssue', 'VBRB-10'),
+    node('m1', 't', 'mcp__claude_ai_Atlassian__editJiraIssue', 'ACME-1337'),
     node('m2', 't', 'mcp__claude_ai_Atlassian__createJiraIssue', ''),
-    node('r1', 't', 'Read', `/Users/kevin/.claude/projects/${'-Users-kevin-Workspace-vbrb'.repeat(3)}/memory/notes.md`),
+    node('r1', 't', 'Read', `/Users/kevin/.claude/projects/${'-Users-kevin-Workspace-acme'.repeat(3)}/memory/notes.md`),
   ]
   const phases = phasesOf(steps, childrenOf(steps, {}))
 

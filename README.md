@@ -10,7 +10,7 @@ You  make it a real SVG flow chart
 ├─ ↻ Tested    14.0s  Bash · 3× claude plugin test .
 ├─ ✓ Subagent  41.0s  Review the tests · 3 steps  212k in · 4k out
 │                     "Tests cover only the helpers"
-├─ ✓ Atlassian  2.6s  editJiraIssue · VBRB-10
+├─ ✓ Atlassian  2.6s  editJiraIssue · ACME-1337
 └─ Claude  I rebuilt the pane as a real flow chart.
 ```
 
