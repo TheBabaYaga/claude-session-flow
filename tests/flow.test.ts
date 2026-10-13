@@ -141,3 +141,16 @@ test('puts one blank line between prompts in the terminal, where the empty row a
   const header = ('children' in tree ? tree.children ?? [] : []).find(c => JSON.stringify(c).includes('Prompt 2'))
   expect(header).toMatchObject({ type: 'Box', props: { marginTop: 0 } })
 })
+
+test('highlights the skills a prompt used, each by name, in their own color', async () => {
+  const steps = [
+    node('k1', 't', 'Skill', 'superpowers:brainstorming'),
+    node('k2', 't', 'Skill', 'plugin-authoring'),
+    node('k3', 't', 'Skill', 'plugin-authoring'),
+    node('r1', 't', 'Read', '/src/a.ts'),
+  ]
+  const phases = phasesOf(steps, childrenOf(steps, {}))
+
+  expect(phases.map(p => `${p.label} ${p.detail}`)).toEqual(['Skill superpowers:brainstorming, plugin-authoring', 'Explored Read · a.ts'])
+  expect(phases[0]?.color).toBe('remember')
+})

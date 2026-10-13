@@ -33,6 +33,7 @@ const COLOR: Record<string, string> = {
   Ran: 'bashBorder',
   Subagent: 'merged',
   'Asked you': 'permission',
+  Skill: 'remember',
 }
 // Steps the engine makes for itself, which say nothing about the work.
 const HIDDEN = /^ToolSearch$/
@@ -102,6 +103,7 @@ const describe = (label: string, steps: readonly FlowNode[]) => {
     const files = steps.map(s => s.detail)
     return `${steps.length > new Set(files).size ? times : ''}${names(files)}`
   }
+  if (label === 'Skill') return [...new Set(steps.map(s => s.detail))].join(', ')
   const last = steps[steps.length - 1]
   return `${times}${last === undefined ? '' : stepText(last)}`
 }

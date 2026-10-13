@@ -43,6 +43,7 @@ The pane opens when a session starts. In the terminal it opens only when the win
 | `Prompt n` | A dim header with the prompt's number, its cost in dollars (subagents included) and its time. A background task's notice gets a `Background task` header and a `Task` row. |
 | `You` | Your prompt. A slash command shows as `/name args`. |
 | A phase | A run of tool calls of one kind, with its time: Explored (read and search), Edited, Tested (a shell command with test, tsc, lint or validate in it), Ran (other shell commands), Researched (web), Asked you. The detail starts with the tools the phase used, such as `Read, Grep`. An MCP tool shows its server name, and its tool name starts the detail. Other tools keep their own name. `ToolSearch` steps are hidden. A count such as `3×` comes after the tool names when a phase merges several calls. |
+| `Skill` | The skills Claude loaded with the Skill tool, each by name, in one color. A skill you typed as `/name` shows in the `You` row. |
 | `Subagent` | The task of a subagent, its step count and its tokens. The first line of its answer is below it. |
 | `Claude` | The first line of Claude's answer, or `working…` while it runs. |
 
